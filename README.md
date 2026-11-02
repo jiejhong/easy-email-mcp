@@ -62,7 +62,7 @@ export EASY_EMAIL_CONFIG=/absolute/private/mail-config.json
 # 在同一台电脑打开 http://127.0.0.1:8765
 ```
 
-仅供在运行工具的那台电脑本地操作。监听回环地址；包含 Host、Origin 和 CSRF 校验。密码不回显、不写入配置文件，仅写入获支持的系统 keyring；无安全后端则拒绝保存。保存配置不代表连接或认证成功。页面提供显式连接测试按钮：仅执行 TLS 认证/退出，不读取或发送邮件；不会自动测试。**不要把这个页面反向代理到公网，也不要把云环境 localhost 链接当成手机可访问的安全登录通道。**
+仅供在运行工具的那台电脑本地操作。监听回环地址；包含 Host、Origin 和 CSRF 校验。密码不回显、不写入配置文件，仅写入获支持的系统 keyring；无安全后端则拒绝保存。保存配置不代表连接或认证成功。测试连接不会保存或清空密码；测试失败、保存失败或部分保存时保留当前输入，只有保存成功后才清空。页面刷新或关闭仍会丢弃未保存输入。页面提供显式连接测试按钮：仅执行 TLS 认证/退出，不读取或发送邮件；不会自动测试。**不要把这个页面反向代理到公网，也不要把云环境 localhost 链接当成手机可访问的安全登录通道。**
 
 ## Agent 接入
 
@@ -133,6 +133,6 @@ docker run --rm -i easy-email-mcp
 
 ## 测试与局限
 
-`python -m pytest -q` 包含：TLS校验、注入拒绝、UID有效性、EXAMINE/PEEK、消息大小、秘密错误脱敏、发送禁用、收件人allowlist、持久去重/不确定发送、真实子进程MCP 2025/2026交互。邮件操作测试使用受控 mock，不是腾讯邮箱实测。请见 `SECURITY.md` 和 `docs/ACCEPTANCE.md`。
+`python -m pytest -q` 包含：TLS校验、注入拒绝、UID有效性、EXAMINE/PEEK、消息大小、秘密错误脱敏、发送禁用、收件人allowlist、持久去重/不确定发送、真实子进程MCP 2025/2026交互。前端回归测试通过 Node.js 执行实际页面 JavaScript，覆盖测试后保存、失败保留输入等交互；需安装 Node.js 才运行该测试（CI 明确安装，其他环境缺少时会报告 skip）。邮件操作测试使用受控 mock，不是腾讯邮箱实测。请见 `SECURITY.md` 和 `docs/ACCEPTANCE.md`。
 
 本项目参考了 `fuyouai/email-mcp` 的功能需求，不复用其源代码；未运行先前已停止的安装实例。

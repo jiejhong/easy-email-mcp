@@ -6,8 +6,8 @@
   },
   {
     "path": ".github/workflows/tests.yml",
-    "sha256": "997a666f006252810546f7f1d913dba2aed5cafde6de28d0623d648c31dcdef5",
-    "bytes": 486
+    "sha256": "506389ac6793ceeaf670b6b996b0160a4297e493ced5d1c728c6b82c42b027ff",
+    "bytes": 565
   },
   {
     "path": ".gitignore",
@@ -21,8 +21,8 @@
   },
   {
     "path": "README.md",
-    "sha256": "66d84e667b2abe3661e44e5e2232b36e3bfc7f3188a1d1604634f0141746bf26",
-    "bytes": 8852
+    "sha256": "0a530f67f324940aaa0431eb311bfb5b66338993bb1677911c643e5cbb28a806",
+    "bytes": 9261
   },
   {
     "path": "SECURITY.md",
@@ -31,8 +31,8 @@
   },
   {
     "path": "docs/ACCEPTANCE.md",
-    "sha256": "aa8dd7688fed5eb29e38110918a2d4926120d650dbeda8eb658cbecc27444072",
-    "bytes": 2207
+    "sha256": "983733bcce21d34bc6a9d3924dd9969468646f4f17ac5eceaf695b5c5a627f3c",
+    "bytes": 2479
   },
   {
     "path": "examples/config.example.json",
@@ -76,8 +76,13 @@
   },
   {
     "path": "src/easy_email_mcp/web_config.py",
-    "sha256": "ed0926f617a730bc4845937626ab08f8eefe2445d316c381579d6f0f7a01665c",
-    "bytes": 13837
+    "sha256": "4dbfee77a88a7068b4b62104facaca2386b2624727706965b45cd1c5afe75a87",
+    "bytes": 14320
+  },
+  {
+    "path": "tests/js/web_password_interaction.cjs",
+    "sha256": "e4904dc20274cc9277ffa5e4981bd8481e8d4e2d75e43d8fbbf9a26c2cdd2d87",
+    "bytes": 4654
   },
   {
     "path": "tests/test_mail.py",
@@ -93,5 +98,10 @@
     "path": "tests/test_web_config.py",
     "sha256": "6f6a1c0cd3e4a822f69aa6abb537686ed5003e27d46ffcd41a0a6f4067e62273",
     "bytes": 7879
+  },
+  {
+    "path": "tests/test_web_javascript.py",
+    "sha256": "e965480e923f4548b1a665ab56560e14a4fc0ee988750ac8424b61a91cedad2f",
+    "bytes": 859
   }
 ]

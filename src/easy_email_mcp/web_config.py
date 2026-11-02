@@ -199,11 +199,31 @@ def create_app(config_path: str | Path, port: int = 8765):
     return app
 
 
-PAGE = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>easy-email-mcp 配置</title><style>body{font:16px system-ui;max-width:720px;margin:2rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea{display:block;width:95%;padding:.5rem}button{padding:.7rem}small{color:#555}</style><h1>easy-email-mcp 配置</h1><p>仅限本机访问。保存配置不代表已登录邮箱。只有点击“测试连接”才会验证 IMAP/SMTP 登录，不收取邮件、不发信。</p><form id="settings"><div id="fields"></div><label>密码（可选，仅保存到系统安全凭据库；留空保持原密码）<input name="password" type="password" autocomplete="new-password"></label><button type="submit" value="save">保存配置</button> <button type="submit" value="test">测试连接</button></form><p id="result" role="status"></p><small>不要将本页面通过公网代理公开。环境变量覆盖配置文件；MCP 进程需重新启动才会加载新配置。</small><script nonce="__TOKEN__">
+PAGE = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>easy-email-mcp 配置</title><style>body{font:16px system-ui;max-width:720px;margin:2rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea{display:block;width:95%;padding:.5rem}button{padding:.7rem}small{color:#555}</style><h1>easy-email-mcp 配置</h1><p>仅限本机访问。保存配置不代表已登录邮箱。只有点击“测试连接”才会验证 IMAP/SMTP 登录，不收取邮件、不发信。测试不会保存或清空密码；仅保存成功后清空密码框。</p><form id="settings"><div id="fields"></div><label>密码（可选，仅保存到系统安全凭据库；留空保持原密码）<input name="password" type="password" autocomplete="new-password"></label><button type="submit" value="save">保存配置</button> <button type="submit" value="test">测试连接</button></form><p id="result" role="status"></p><small>不要将本页面通过公网代理公开。环境变量覆盖配置文件；MCP 进程需重新启动才会加载新配置。</small><script nonce="__TOKEN__">
 const token='__TOKEN__', form=document.querySelector('form'), fields=document.querySelector('#fields'), result=document.querySelector('#result');
 const labels={imap_host:'IMAP 服务器',imap_port:'IMAP TLS 端口',smtp_host:'SMTP 服务器',smtp_port:'SMTP 端口',smtp_security:'SMTP 加密方式',username:'邮箱账号',secret_source:'密码来源',secret_env:'密码环境变量名（不是密码）',send_enabled:'允许发送（仍须 Agent 明确授权）',recipients:'允许收件人（逗号分隔）',state_dir:'本地状态目录',max_message_bytes:'邮件字节上限',max_attachment_bytes:'附件字节上限',timeout:'连接超时（秒）'};
 fetch('/api/config').then(r=>r.json()).then(data=>{if(data.error)throw Error(data.error);Object.entries(labels).forEach(([name,label])=>{const l=document.createElement('label');l.textContent=label;let e;if(['smtp_security','secret_source','send_enabled'].includes(name)){e=document.createElement('select');let opts=name==='smtp_security'?['tls','starttls']:name==='secret_source'?['keyring','env']:['false','true'];opts.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;e.append(o)});}else{e=document.createElement('input');e.type=(name.endsWith('_port')||name.endsWith('_bytes')||name==='timeout')?'number':'text';}e.name=name;e.value=Array.isArray(data[name])?data[name].join(','):String(data[name]??'');l.append(e);fields.append(l);});}).catch(e=>{result.textContent='配置读取失败';form.querySelector('button').disabled=true;});
-form.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(form));d.imap_port=Number(d.imap_port);d.smtp_port=Number(d.smtp_port);d.max_message_bytes=Number(d.max_message_bytes);d.max_attachment_bytes=Number(d.max_attachment_bytes);d.timeout=Number(d.timeout);d.send_enabled=d.send_enabled==='true';d.recipients=d.recipients.split(',').map(x=>x.trim()).filter(Boolean);try{const r=await fetch(e.submitter?.value==='test'?'/api/test':'/api/config',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':token},body:JSON.stringify(d)});const data=await r.json();result.textContent=data.message||data.error||('IMAP: '+data.imap+'；SMTP: '+data.smtp+'（未保存配置）');form.elements.password.value='';}catch(e){result.textContent='保存失败，请检查本机配置服务';form.elements.password.value='';}});
+form.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const testing=e.submitter?.value==='test';
+  const d=Object.fromEntries(new FormData(form));
+  d.imap_port=Number(d.imap_port);d.smtp_port=Number(d.smtp_port);
+  d.max_message_bytes=Number(d.max_message_bytes);d.max_attachment_bytes=Number(d.max_attachment_bytes);
+  d.timeout=Number(d.timeout);d.send_enabled=d.send_enabled==='true';
+  d.recipients=d.recipients.split(',').map(x=>x.trim()).filter(Boolean);
+  try{
+    const r=await fetch(testing?'/api/test':'/api/config',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':token},body:JSON.stringify(d)});
+    const data=await r.json();
+    result.textContent=data.message||data.error||('IMAP: '+data.imap+'；SMTP: '+data.smtp+'（未保存配置）');
+    // Testing is temporary authentication, not a save. Preserve input after any
+    // failed/partial save, and never discard a newer edit made while awaiting IO.
+    if(!testing && r.ok && data.saved===true && form.elements.password.value===d.password){
+      form.elements.password.value='';
+    }
+  }catch(e){
+    result.textContent=testing?'测试失败，请检查本机配置服务；密码输入已保留':'保存失败，请检查本机配置服务；密码输入已保留';
+  }
+});
 </script></html>'''
 
 
