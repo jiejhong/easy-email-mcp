@@ -1,0 +1,16 @@
+{
+  "imap_host": "imap.exmail.qq.com",
+  "imap_port": 993,
+  "smtp_host": "smtp.exmail.qq.com",
+  "smtp_port": 465,
+  "smtp_security": "tls",
+  "username": "your-name@example.com",
+  "secret_source": "keyring",
+  "secret_env": "EASY_EMAIL_PASSWORD",
+  "send_enabled": false,
+  "recipients": [],
+  "state_dir": "",
+  "max_message_bytes": 8388608,
+  "max_attachment_bytes": 2097152,
+  "timeout": 20
+}

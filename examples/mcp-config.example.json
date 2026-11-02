@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "easy-email": {
+      "command": "/absolute/path/to/.venv/bin/python",
+      "args": ["-m", "easy_email_mcp.server"],
+      "env": {"EASY_EMAIL_CONFIG": "/absolute/private/mail-config.json"}
+    }
+  }
+}

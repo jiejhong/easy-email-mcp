@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "easy-email-mcp"
+version = "0.1.0"
+description = "Local-first, read-only-by-default IMAP/SMTP MCP server"
+requires-python = ">=3.11"
+dependencies = ["mcp==2.3.0", "keyring>=25,<26", "starlette>=0.48,<2", "uvicorn>=0.31,<1"]
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+[project.scripts]
+easy-email-mcp = "easy_email_mcp.server:main"
+easy-email-call = "easy_email_mcp.client:main"
+easy-email-config = "easy_email_mcp.web_config:main"
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
