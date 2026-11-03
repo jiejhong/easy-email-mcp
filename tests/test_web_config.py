@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 
 from starlette.testclient import TestClient
@@ -172,7 +172,7 @@ def test_connection_info_is_real_stdio_not_web_url_and_no_secrets(tmp_path, monk
 def test_connection_panel_escapes_paths_and_handles_posix_quoting(tmp_path):
     from easy_email_mcp.web_config import connection_info, connection_panel
     import shlex
-    path = Path("/tmp/name with 'quotes' <script>alert(1)</script>/config.json")
+    path = PurePosixPath("/tmp/name with 'quotes' <script>alert(1)</script>/config.json")
     info = connection_info(path, 8765, executable="/tmp/venv with spaces/bin/python", windows=False)
     split = shlex.split(info['launch_command'])
     assert split == ['EASY_EMAIL_CONFIG=' + str(path), '/tmp/venv with spaces/bin/python', '-m', 'easy_email_mcp.server']

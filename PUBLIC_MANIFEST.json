@@ -116,8 +116,8 @@
   },
   {
     "path": "tests/test_web_config.py",
-    "sha256": "b6041a20c61e976a3504d6d3881b5565edf4c12bb48e209d5033b7dab0f650c8",
-    "bytes": 13325
+    "sha256": "5bc7e655ac607ee680a58f5e92b7c0066229745e78455385d8b4b1bb57cf7c33",
+    "bytes": 13349
   },
   {
     "path": "tests/test_web_javascript.py",
