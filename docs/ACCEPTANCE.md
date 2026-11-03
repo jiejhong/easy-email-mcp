@@ -8,6 +8,7 @@
 - 2025-03-26、2025-06-18、2025-11-25 原始 stdio `initialize` → `notifications/initialized` → 工具调用；测试逐步等待响应，不依赖管道提前EOF。
 - 官方 MCP Client → in-process Server → 受控 IMAP mock → `mail_read` 返回内容。
 - TLS/只读/UIDVALIDITY/预算/注入/秘密脱敏/SMTP去重/配置Web CSRF等自动测试。
+- 保存失败脱敏分类：字段校验、后端初始化/选择、凭据写入、配置文件写入及部分保存。使用 mock 凭据后端，不以这些测试证明任何真实账户已保存或认证成功。
 - Node.js 执行实际页面内联 JavaScript 的密码输入回归测试：测试后保留并继续保存、HTTP/协议/网络/JSON错误、部分保存，以及异步期间新输入不被清除。使用最小 DOM 和 mock fetch，不替代真实浏览器视觉验收。
 
 邮件端使用 mock 对象。它验证调用顺序及保护，不代表真实网络服务实现互操作。

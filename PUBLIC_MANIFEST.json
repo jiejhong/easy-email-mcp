@@ -21,8 +21,8 @@
   },
   {
     "path": "README.md",
-    "sha256": "0a530f67f324940aaa0431eb311bfb5b66338993bb1677911c643e5cbb28a806",
-    "bytes": 9261
+    "sha256": "0e21c5fbe4d2aa009d936b1f04e650c23e413a4cf0461262e6bd19f397ff960a",
+    "bytes": 9770
   },
   {
     "path": "SECURITY.md",
@@ -31,8 +31,8 @@
   },
   {
     "path": "docs/ACCEPTANCE.md",
-    "sha256": "983733bcce21d34bc6a9d3924dd9969468646f4f17ac5eceaf695b5c5a627f3c",
-    "bytes": 2479
+    "sha256": "3932fd8a2d6e7dd52abf6ea0a33e94019fe5b87956aeb74f6ccad19894059470",
+    "bytes": 2696
   },
   {
     "path": "examples/config.example.json",
@@ -76,8 +76,8 @@
   },
   {
     "path": "src/easy_email_mcp/web_config.py",
-    "sha256": "4dbfee77a88a7068b4b62104facaca2386b2624727706965b45cd1c5afe75a87",
-    "bytes": 14320
+    "sha256": "195da2e9b9b95e9202e36ab96dfb95a4b473aa7671046c9381c6f658e82dc705",
+    "bytes": 17856
   },
   {
     "path": "tests/js/web_password_interaction.cjs",
@@ -95,8 +95,13 @@
     "bytes": 4074
   },
   {
+    "path": "tests/test_save_diagnostics.py",
+    "sha256": "39ac2e14b9fbb2ce45f9dc61f5f6b686451c95016abdeaf2e6d814c1e5f3b8c4",
+    "bytes": 4281
+  },
+  {
     "path": "tests/test_web_config.py",
-    "sha256": "6f6a1c0cd3e4a822f69aa6abb537686ed5003e27d46ffcd41a0a6f4067e62273",
+    "sha256": "3ffc364121e40f51906aeefe82ff9dfa60699b7ec102d0b78560148b5644ae04",
     "bytes": 7879
   },
   {

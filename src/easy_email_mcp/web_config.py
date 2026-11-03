@@ -5,6 +5,7 @@ import argparse
 import hmac
 import smtplib
 import json
+import logging
 import os
 from pathlib import Path
 import secrets
@@ -22,43 +23,60 @@ from .mail import BoundedIMAP4SSL
 
 MAX_REQUEST = 16 * 1024
 FIELDS = set(Config.__dataclass_fields__)
+logger = logging.getLogger(__name__)
+
+
+class ConfigurationError(ValueError):
+    """Only fixed, safe diagnostics; never include values or backend exception text."""
+    def __init__(self, code, stage, message, field=None, status=400):
+        super().__init__(message)
+        self.code, self.stage, self.field, self.status = code, stage, field, status
+
+
+def invalid(field, message):
+    raise ConfigurationError('invalid_settings', 'validate', message, field)
 
 
 def validate(data):
     if not isinstance(data, dict) or set(data) - FIELDS - {"password"}:
-        raise ValueError("Unsupported configuration fields")
+        invalid(None, 'Unsupported configuration fields. Use the current configuration page.')
     cfg = {k: v for k, v in data.items() if k in FIELDS}
     defaults = Config()
     for k in FIELDS:
         cfg.setdefault(k, getattr(defaults, k))
     for k in ("imap_host", "smtp_host", "username", "secret_env", "state_dir"):
         if not isinstance(cfg[k], str) or len(cfg[k]) > 1024 or any(ord(c) < 32 for c in cfg[k]):
-            raise ValueError("Invalid text field")
+            invalid(k, 'Expected text without control characters (maximum 1024 characters).')
     for k in ("imap_host", "smtp_host"):
         if not cfg[k] or any(c in cfg[k] for c in " /\\@?#"):
-            raise ValueError("Use a hostname, not a URL")
+            invalid(k, 'Enter a hostname, without a URL scheme, port, or path.')
     if not cfg["username"] or len(cfg["username"]) > 320:
-        raise ValueError("Mailbox username required")
+        invalid('username', 'Enter the mailbox account (maximum 320 characters).')
     for k in ("imap_port", "smtp_port"):
         if type(cfg[k]) is not int or not 1 <= cfg[k] <= 65535:
-            raise ValueError("Invalid server port")
-    if cfg["smtp_security"] not in ("tls", "starttls") or cfg["secret_source"] not in ("keyring", "env"):
-        raise ValueError("Invalid TLS or secret configuration")
+            invalid(k, 'Enter an integer port between 1 and 65535.')
+    if cfg['smtp_security'] not in ('tls', 'starttls'):
+        invalid('smtp_security', 'Select tls or starttls.')
+    if cfg['secret_source'] not in ('keyring', 'env'):
+        invalid('secret_source', 'Select keyring or env.')
     if type(cfg["send_enabled"]) is not bool:
-        raise ValueError("send_enabled must be boolean")
+        invalid('send_enabled', 'Select true or false.')
     if not isinstance(cfg["recipients"], (list, tuple)) or len(cfg["recipients"]) > 100:
-        raise ValueError("Invalid recipients")
+        invalid('recipients', 'Use a list of at most 100 recipient addresses.')
     if any(not isinstance(x, str) or len(x) > 320 or any(ord(c) < 32 for c in x) for x in cfg["recipients"]):
-        raise ValueError("Invalid recipients")
+        invalid('recipients', 'Recipient entries must be text without control characters (maximum 320 characters).')
+    for field, upper in (('timeout', 60), ('max_message_bytes', 32 * 1024 * 1024), ('max_attachment_bytes', 4 * 1024 * 1024)):
+        if type(cfg[field]) is not int or not 1 <= cfg[field] <= upper:
+            invalid(field, 'Enter an integer within the permitted timeout or byte limit.')
     try:
         Config.from_mapping(cfg)
     except MailError:
-        raise ValueError("Invalid configuration") from None
+        invalid(None, 'Invalid server settings. Check hostnames, limits, and field types.')
     password = data.get("password", "")
     if not isinstance(password, str) or len(password) > 4096:
-        raise ValueError("Invalid password input")
+        invalid('password', 'Password input must be text with at most 4096 characters.')
     if password and cfg["secret_source"] != "keyring":
-        raise ValueError("Web passwords require an approved OS keyring")
+        invalid('secret_source', 'Select keyring to save a password from this page. env requires host-managed secret injection.')
     return cfg, password
 
 
@@ -69,9 +87,12 @@ class PartialSaveError(Exception):
 def save_config(path: Path, cfg: dict, password: str):
     path = path.expanduser().absolute()
     if path.is_symlink():
-        raise ValueError("Configuration symlinks are not supported")
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd, temporary = tempfile.mkstemp(prefix=".email-config-", dir=path.parent)
+        raise ConfigurationError('config_path_unsafe', 'config_write', 'Use a regular private configuration file, not a symlink.')
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd, temporary = tempfile.mkstemp(prefix=".email-config-", dir=path.parent)
+    except OSError:
+        raise ConfigurationError('config_file_write_failed', 'config_write', 'Cannot create a configuration temporary file. Check directory write access; existing configuration is preserved.', status=500) from None
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(cfg, stream, ensure_ascii=False, indent=2)
@@ -80,22 +101,30 @@ def save_config(path: Path, cfg: dict, password: str):
             os.fsync(stream.fileno())
         if password:
             import keyring
-            backend = keyring.get_keyring()
+            try:
+                backend = keyring.get_keyring()
+            except Exception:
+                raise ConfigurationError('keyring_backend_unavailable', 'backend_select', 'Cannot initialize the OS credential backend. Run this service under the same signed-in OS user as the MCP process.', status=503) from None
             if not backend.__class__.__module__.startswith(("keyring.backends.SecretService", "keyring.backends.macOS", "keyring.backends.Windows")):
-                raise ValueError("No approved OS keyring; password was not saved")
+                raise ConfigurationError('keyring_backend_unsupported', 'backend_select', 'No approved OS credential backend selected. Use Windows, macOS, or SecretService under the signed-in user; chained and plaintext backends are not accepted.')
             try:
                 keyring.set_password("easy-email-mcp", cfg["username"], password)
             except Exception:
-                raise ValueError("OS keyring unavailable; configuration was not saved") from None
+                raise ConfigurationError('credential_write_failed', 'credential_write', 'The OS credential store rejected the save. Check the service Windows/OS user and credential-store availability. Run it under the same signed-in account as MCP; existing configuration is preserved.', status=503) from None
         try:
             os.replace(temporary, path)
         except OSError:
             if password:
                 raise PartialSaveError() from None
-            raise
+            raise ConfigurationError('config_file_write_failed', 'config_write', 'Cannot replace the configuration file. Check file write access; existing configuration is preserved.', status=500) from None
+    except OSError:
+        raise ConfigurationError('config_file_write_failed', 'config_write', 'Cannot write the configuration temporary file. Check directory write access; existing configuration is preserved.', status=500) from None
     finally:
         if os.path.exists(temporary):
-            os.unlink(temporary)
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 def test_connection(cfg: dict, supplied_password: str):
@@ -188,11 +217,18 @@ def create_app(config_path: str | Path, port: int = 8765):
             await run_in_threadpool(save_config, path, cfg, password)
             return JSONResponse({"saved": True, "message": "Configuration saved. Restart the MCP process to apply it. No mailbox connection was tested."})
         except PartialSaveError:
-            return JSONResponse({"partial": True, "error": "Password was saved to the OS keyring, but the configuration file was not committed. Check file access before retrying; the previous password was not restored."}, status_code=500)
+            logger.warning('Configuration save failed: code=config_commit_failed_after_credential_write stage=config_write')
+            return JSONResponse({"partial": True, 'code': 'config_commit_failed_after_credential_write', 'stage': 'config_write', "error": "Password was saved to the OS keyring, but the configuration file was not committed. Check file access before retrying; the previous password was not restored."}, status_code=500)
+        except ConfigurationError as exc:
+            logger.warning('Configuration save failed: code=%s stage=%s field=%s', exc.code, exc.stage, exc.field)
+            message = f'{exc.field}: {exc}' if exc.field else str(exc)
+            return JSONResponse({'code': exc.code, 'stage': exc.stage, 'field': exc.field, 'error': message}, status_code=exc.status)
+        except json.JSONDecodeError:
+            return JSONResponse({'code': 'invalid_json', 'stage': 'validate', 'error': 'Invalid JSON request. Refresh the configuration page and retry.'}, status_code=400)
         except ValueError:
-            return JSONResponse({"error": "Invalid settings or approved OS keyring unavailable. No plaintext password fallback."}, status_code=400)
+            return JSONResponse({'code': 'invalid_settings', 'stage': 'validate', "error": "Invalid settings. Check field types and permitted ranges."}, status_code=400)
         except Exception:
-            return JSONResponse({"error": "Could not save configuration. Check local file and credential-store access."}, status_code=500)
+            return JSONResponse({'code': 'save_internal_error', 'stage': 'save', "error": "Unexpected save error. Check trusted local service diagnostics; no secret details are returned."}, status_code=500)
 
     app = Starlette(routes=[Route("/", home), Route("/api/config", get_config), Route("/api/config", post_config, methods=["POST"]), Route("/api/test", post_config, methods=["POST"])])
     app.add_middleware(BaseHTTPMiddleware, dispatch=guard)

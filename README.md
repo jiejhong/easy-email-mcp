@@ -66,6 +66,8 @@ export EASY_EMAIL_CONFIG=/absolute/private/mail-config.json
 
 ## Agent 接入
 
+保存失败时，响应通过 `code`、`stage` 和可选 `field` 区分字段校验、系统凭据后端选择、凭据写入及配置文件写入；不返回字段值或底层异常文本。服务日志仅记录错误代码、阶段和字段名。Windows 配置服务与 MCP 应在同一个已登录的操作系统用户下运行；检测到 Windows keyring 后端并不代表另一个用户或沙箱进程能使用该用户的凭据库。不要通过修改凭据权限或明文回退解决这一问题。
+
 通用 stdio 配置见 `examples/mcp-config.example.json`。把 Python 解释器和配置文件路径替换成目标机器上的真实路径，凭据交给宿主的安全注入或 OS keyring。示例不包含任何真实账户或密码。
 
 云端调用（参数走 stdin，避免邮件正文进入命令行历史）：

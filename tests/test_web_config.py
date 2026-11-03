@@ -105,7 +105,7 @@ def test_keyring_save_failure_keeps_existing_config(tmp_path):
     backend = type("TestBackend", (), {"__module__":"keyring.backends.SecretService"})()
     with patch("keyring.get_keyring", return_value=backend), patch("keyring.set_password", side_effect=RuntimeError("FAKE_SECRET")):
         response = client.post("/api/config", json={"username":"user@example.com", "password":"FAKE_SECRET"}, headers=headers)
-    assert response.status_code == 400
+    assert response.status_code == 503
     assert path.read_text() == original
     assert "FAKE_SECRET" not in response.text
     assert not list(tmp_path.glob(".email-config-*"))
