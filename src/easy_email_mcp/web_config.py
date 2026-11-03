@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import argparse
 import hmac
+import html
 import smtplib
 import json
 import logging
 import os
 from pathlib import Path
 import secrets
+import shlex
+import sys
 import tempfile
 
 from starlette.applications import Starlette
@@ -168,8 +171,62 @@ def test_connection(cfg: dict, supplied_password: str):
     return results
 
 
+def connection_info(config_path: Path, port: int, *, executable=None, windows=None):
+    """Describe this host's stdio launch contract, never inspect mailbox secrets."""
+    executable = str(executable if executable is not None else sys.executable)
+    config_file = str(config_path)
+    windows = os.name == "nt" if windows is None else windows
+    args = ["-m", "easy_email_mcp.server"]
+    if windows:
+        def quote(value):
+            # PowerShell treats U+2018..U+201B as single-quote delimiters too.
+            # Double each recognized delimiter, preserving the actual path.
+            # See PowerShell CharTraits.IsSingleQuote / ScanStringLiteral.
+            quote_chars = "'\u2018\u2019\u201a\u201b"
+            return "'" + "".join(c + c if c in quote_chars else c for c in value) + "'"
+        command = "$env:EASY_EMAIL_CONFIG = " + quote(config_file) + "; & " + " ".join(quote(v) for v in [executable, *args])
+        shell = "Windows PowerShell"
+    else:
+        command = "EASY_EMAIL_CONFIG=" + shlex.quote(config_file) + " " + shlex.join([executable, *args])
+        shell = "POSIX shell (Linux/macOS)"
+    return {
+        "transport": "stdio",
+        "mcp_url": None,
+        "configuration_page_url": f"http://127.0.0.1:{port}/",
+        "config_file": config_file,
+        "launch_shell": shell,
+        "launch_command": command,
+        "mcp_configuration": {"mcpServers": {"easy-email-mcp": {
+            "command": executable,
+            "args": args,
+            "env": {"EASY_EMAIL_CONFIG": config_file},
+        }}},
+        "process_verified": False,
+    }
+
+
+def connection_panel(info):
+    # Escape all runtime paths, including quotes, before rendering HTML.
+    command = html.escape(info["launch_command"])
+    example = html.escape(json.dumps(info["mcp_configuration"], ensure_ascii=False, indent=2))
+    config_path = html.escape(info["config_file"])
+    page_url = html.escape(info["configuration_page_url"])
+    shell = html.escape(info["launch_shell"])
+    return f"""<section aria-labelledby="mcp-connection-title" id="mcp-connection">
+<h2 id="mcp-connection-title">Agent / MCP 接入</h2>
+<p><strong>传输方式：stdio（标准输入/输出）</strong></p>
+<p>MCP HTTP / SSE 地址：<strong>未提供</strong>。当前版本由 Agent 启动本地进程连接，没有可粘贴的 MCP 网络 URL。</p>
+<p>Web 配置页面地址：<code id="configuration-page-url">{page_url}</code>。这是配置界面，<strong>不是 MCP 服务地址</strong>。</p>
+<p>当前配置文件：<code id="mcp-config-file">{config_path}</code></p>
+<p>本机启动命令（{shell}）：</p><pre id="mcp-launch-command">{command}</pre>
+<p>Agent MCP 配置示例（常见 mcpServers 格式，具体入口以宿主为准）：</p><pre id="mcp-config-example">{example}</pre>
+<p>上述 Python 和配置路径属于运行本配置页面的电脑。在另一台电脑或云环境使用时，须先安装本项目，并替换为那台机器的路径；localhost 不能用于跨机器连接。</p>
+<p>示例只包含配置文件引用，不包含邮箱密码或环境变量的秘密值。凭据须在 MCP 运行机器上安全配置；使用系统凭据库时，Agent 与配置服务应使用相同 OS 用户。此处展示接入方法，未验证 Agent 已连接或邮箱已登录。</p>
+</section>"""
+
+
 def create_app(config_path: str | Path, port: int = 8765):
-    path = Path(config_path)
+    path = Path(config_path).expanduser().absolute()
     token = secrets.token_urlsafe(32)
     hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     origins = {f"http://{host}" for host in hosts}
@@ -185,7 +242,11 @@ def create_app(config_path: str | Path, port: int = 8765):
         return response
 
     async def home(request):
-        return HTMLResponse(PAGE.replace("__TOKEN__", token))
+        info = connection_info(path, port)
+        return HTMLResponse(PAGE.replace("__TOKEN__", token).replace("__CONNECTION_PANEL__", connection_panel(info)))
+
+    async def get_connection(request):
+        return JSONResponse(connection_info(path, port))
 
     async def get_config(request):
         try:
@@ -230,12 +291,12 @@ def create_app(config_path: str | Path, port: int = 8765):
         except Exception:
             return JSONResponse({'code': 'save_internal_error', 'stage': 'save', "error": "Unexpected save error. Check trusted local service diagnostics; no secret details are returned."}, status_code=500)
 
-    app = Starlette(routes=[Route("/", home), Route("/api/config", get_config), Route("/api/config", post_config, methods=["POST"]), Route("/api/test", post_config, methods=["POST"])])
+    app = Starlette(routes=[Route("/", home), Route("/api/connection", get_connection), Route("/api/config", get_config), Route("/api/config", post_config, methods=["POST"]), Route("/api/test", post_config, methods=["POST"])])
     app.add_middleware(BaseHTTPMiddleware, dispatch=guard)
     return app
 
 
-PAGE = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>easy-email-mcp 配置</title><style>body{font:16px system-ui;max-width:720px;margin:2rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea{display:block;width:95%;padding:.5rem}button{padding:.7rem}small{color:#555}</style><h1>easy-email-mcp 配置</h1><p>仅限本机访问。保存配置不代表已登录邮箱。只有点击“测试连接”才会验证 IMAP/SMTP 登录，不收取邮件、不发信。测试不会保存或清空密码；仅保存成功后清空密码框。</p><p><strong>0.2.0 凭据升级：</strong>密码现在绑定邮箱账号和 IMAP/SMTP 服务器。旧版已保存密码不会自动迁移；即使服务器不变，也需在本页面重新输入并保存一次。旧项不会被删除。</p><p>使用环境变量凭据时，点击测试会将指定环境变量中的秘密用于页面所选服务器；请先人工核对账号和域名，不要把测试当作自动健康检查。</p><form id="settings"><div id="fields"></div><label>密码（可选，仅保存到系统安全凭据库；留空保持原密码）<input name="password" type="password" autocomplete="new-password"></label><button type="submit" value="save">保存并应用配置</button> <button type="submit" value="test">测试连接</button></form><p id="result" role="status"></p><small>不要将本页面通过公网代理公开。支持热加载的 MCP 在下一次工具调用前读取同一配置文件；环境变量覆盖仍优先。保存不会中断进行中的调用，也不证明既有进程已应用。旧版进程需由宿主重新连接本 MCP 以加载新代码；新增发送工具也需重连，无需重启整个 Agent。</small><script nonce="__TOKEN__">
+PAGE = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>easy-email-mcp 配置</title><style>body{font:16px system-ui;max-width:720px;margin:2rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea{display:block;width:95%;padding:.5rem}button{padding:.7rem}small{color:#555}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f6;padding:1rem;border-radius:.4rem}code{overflow-wrap:anywhere}section{margin:1.5rem 0;padding:1rem;border:1px solid #ddd;border-radius:.5rem}</style><h1>easy-email-mcp 配置</h1>__CONNECTION_PANEL__<p>仅限本机访问。保存配置不代表已登录邮箱。只有点击“测试连接”才会验证 IMAP/SMTP 登录，不收取邮件、不发信。测试不会保存或清空密码；仅保存成功后清空密码框。</p><p><strong>0.2.0 凭据升级：</strong>密码现在绑定邮箱账号和 IMAP/SMTP 服务器。旧版已保存密码不会自动迁移；即使服务器不变，也需在本页面重新输入并保存一次。旧项不会被删除。</p><p>使用环境变量凭据时，点击测试会将指定环境变量中的秘密用于页面所选服务器；请先人工核对账号和域名，不要把测试当作自动健康检查。</p><form id="settings"><div id="fields"></div><label>密码（可选，仅保存到系统安全凭据库；留空保持原密码）<input name="password" type="password" autocomplete="new-password"></label><button type="submit" value="save">保存并应用配置</button> <button type="submit" value="test">测试连接</button></form><p id="result" role="status"></p><small>不要将本页面通过公网代理公开。支持热加载的 MCP 在下一次工具调用前读取同一配置文件；环境变量覆盖仍优先。保存不会中断进行中的调用，也不证明既有进程已应用。旧版进程需由宿主重新连接本 MCP 以加载新代码；新增发送工具也需重连，无需重启整个 Agent。</small><script nonce="__TOKEN__">
 const token='__TOKEN__', form=document.querySelector('form'), fields=document.querySelector('#fields'), result=document.querySelector('#result');
 const labels={imap_host:'IMAP 服务器',imap_port:'IMAP TLS 端口',smtp_host:'SMTP 服务器',smtp_port:'SMTP 端口',smtp_security:'SMTP 加密方式',username:'邮箱账号',secret_source:'密码来源',secret_env:'密码环境变量名（不是密码）',send_enabled:'允许发送（仍须 Agent 明确授权）',recipients:'允许收件人（逗号分隔）',state_dir:'本地状态目录',max_message_bytes:'邮件字节上限',max_attachment_bytes:'附件字节上限',timeout:'连接超时（秒）'};
 fetch('/api/config').then(r=>r.json()).then(data=>{if(data.error)throw Error(data.error);Object.entries(labels).forEach(([name,label])=>{const l=document.createElement('label');l.textContent=label;let e;if(['smtp_security','secret_source','send_enabled'].includes(name)){e=document.createElement('select');let opts=name==='smtp_security'?['tls','starttls']:name==='secret_source'?['keyring','env']:['false','true'];opts.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;e.append(o)});}else{e=document.createElement('input');e.type=(name.endsWith('_port')||name.endsWith('_bytes')||name==='timeout')?'number':'text';}e.name=name;e.value=Array.isArray(data[name])?data[name].join(','):String(data[name]??'');l.append(e);fields.append(l);});}).catch(e=>{result.textContent='配置读取失败';form.querySelector('button').disabled=true;});

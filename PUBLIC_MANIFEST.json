@@ -81,8 +81,8 @@
   },
   {
     "path": "src/easy_email_mcp/web_config.py",
-    "sha256": "a05216e47f445c6f8bbf38a65e11b6bc78d3b139a4c705e8483bc1491e248959",
-    "bytes": 19117
+    "sha256": "153e552bfa002dc72183f2ebecd946f8b04ed9d8275dc6224eebb17962daaf0f",
+    "bytes": 22969
   },
   {
     "path": "tests/js/web_password_interaction.cjs",
@@ -116,8 +116,8 @@
   },
   {
     "path": "tests/test_web_config.py",
-    "sha256": "60ebbcd93e1938d53b3675a492f9fe83dbd7d626ccce5773b9edcc8a32afde8e",
-    "bytes": 7973
+    "sha256": "b6041a20c61e976a3504d6d3881b5565edf4c12bb48e209d5033b7dab0f650c8",
+    "bytes": 13325
   },
   {
     "path": "tests/test_web_javascript.py",

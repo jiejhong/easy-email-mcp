@@ -143,3 +143,100 @@ def test_partial_configuration_get_merges_defaults(tmp_path):
     assert response.json()["imap_port"] == 993
     assert response.json()["timeout"] == 20
     assert client.post("/api/config", json=response.json(), headers=headers).status_code == 200
+
+
+def test_connection_info_is_real_stdio_not_web_url_and_no_secrets(tmp_path, monkeypatch):
+    client, path, _ = setup(tmp_path)
+    monkeypatch.setenv('EASY_EMAIL_PASSWORD', 'SECRET_MUST_NOT_APPEAR')
+    path.write_text('{"username":"PRIVATE_ACCOUNT", "secret_env":"PRIVATE_SECRET_VARIABLE"}')
+    with patch('keyring.get_password', side_effect=AssertionError('must not read secrets')):
+        response = client.get('/api/connection')
+        page = client.get('/')
+    assert response.status_code == 200
+    data = response.json()
+    assert data['transport'] == 'stdio' and data['mcp_url'] is None
+    assert data['configuration_page_url'] == 'http://127.0.0.1:8765/'
+    assert data['process_verified'] is False
+    server = data['mcp_configuration']['mcpServers']['easy-email-mcp']
+    assert server['args'] == ['-m', 'easy_email_mcp.server']
+    assert server['env'] == {'EASY_EMAIL_CONFIG': str(path.absolute())}
+    for value in ('SECRET_MUST_NOT_APPEAR', 'PRIVATE_ACCOUNT', 'PRIVATE_SECRET_VARIABLE'):
+        assert value not in response.text + page.text
+    assert '不是 MCP 服务地址' in page.text
+    assert 'MCP HTTP / SSE 地址' in page.text
+    assert '未提供' in page.text
+    assert 'mcp-config-example' in page.text
+    assert response.headers['cache-control'] == 'no-store'
+
+
+def test_connection_panel_escapes_paths_and_handles_posix_quoting(tmp_path):
+    from easy_email_mcp.web_config import connection_info, connection_panel
+    import shlex
+    path = Path("/tmp/name with 'quotes' <script>alert(1)</script>/config.json")
+    info = connection_info(path, 8765, executable="/tmp/venv with spaces/bin/python", windows=False)
+    split = shlex.split(info['launch_command'])
+    assert split == ['EASY_EMAIL_CONFIG=' + str(path), '/tmp/venv with spaces/bin/python', '-m', 'easy_email_mcp.server']
+    panel = connection_panel(info)
+    assert '<script>alert(1)</script>' not in panel
+    assert '&lt;script&gt;alert(1)&lt;/script&gt;' in panel
+    assert info['mcp_configuration']['mcpServers']['easy-email-mcp']['command'] == '/tmp/venv with spaces/bin/python'
+
+
+def test_windows_connection_info_quotes_powershell_paths():
+    from easy_email_mcp.web_config import connection_info
+    path = r"C:\Users\O'Neil\Mail settings\config.json"
+    executable = r"C:\Program Files\Python\python.exe"
+    info = connection_info(path, 18765, executable=executable, windows=True)
+    assert info['launch_shell'] == 'Windows PowerShell'
+    assert info['launch_command'] == "$env:EASY_EMAIL_CONFIG = 'C:\\Users\\O''Neil\\Mail settings\\config.json'; & 'C:\\Program Files\\Python\\python.exe' '-m' 'easy_email_mcp.server'"
+    assert info['mcp_configuration']['mcpServers']['easy-email-mcp']['env']['EASY_EMAIL_CONFIG'] == path
+    assert info['configuration_page_url'] == 'http://127.0.0.1:18765/'
+    assert info['mcp_url'] is None
+
+
+def test_connection_endpoint_enforces_loopback_host_guard(tmp_path):
+    client, path, _ = setup(tmp_path)
+    assert client.get('/api/connection', headers={'Host': 'evil.example:8765'}).status_code == 403
+    remote = TestClient(create_app(path), base_url='http://127.0.0.1:8765', client=('10.0.0.2', 1))
+    assert remote.get('/api/connection').status_code == 403
+
+
+def test_windows_smart_single_quotes_are_escaped_without_changing_paths():
+    from easy_email_mcp.web_config import connection_info
+    quote_chars = "'\u2018\u2019\u201a\u201b"
+    # Exercise all recognized quote characters, including a shell-like suffix.
+    # These are inert fixture strings; no command is executed.
+    for quote in quote_chars:
+        path = "C:\\Users\\" + quote + "; Write-Output INJECTED; #" + quote + "\\config.json"
+        executable = "C:\\Python" + quote + "Path\\python.exe"
+        info = connection_info(path, 8765, executable=executable, windows=True)
+        escaped_path = "'" + path.replace(quote, quote + quote) + "'"
+        escaped_exe = "'" + executable.replace(quote, quote + quote) + "'"
+        assert info['launch_command'] == "$env:EASY_EMAIL_CONFIG = " + escaped_path + "; & " + escaped_exe + " '-m' 'easy_email_mcp.server'"
+        server = info['mcp_configuration']['mcpServers']['easy-email-mcp']
+        assert server['env']['EASY_EMAIL_CONFIG'] == path
+        assert server['command'] == executable
+
+
+def test_windows_mixed_single_quotes_round_trip_as_one_literal():
+    from easy_email_mcp.web_config import connection_info
+    # Mirror the documented PowerShell literal-token rule only; this is not
+    # a substitute for Windows/PowerShell runtime interoperability testing.
+    quote_chars = "'\u2018\u2019\u201a\u201b"
+    path = "C:\\" + quote_chars + "“literal”;$env:PRIVATE;`$(data)\\config.json"
+    command = connection_info(path, 8765, executable='python.exe', windows=True)['launch_command']
+    start = len('$env:EASY_EMAIL_CONFIG = ')
+    assert command[start] == "'"
+    result, index = [], start + 1
+    while index < len(command):
+        char = command[index]
+        if char in quote_chars:
+            if index + 1 < len(command) and command[index + 1] in quote_chars:
+                result.append(command[index + 1])
+                index += 2
+                continue
+            break
+        result.append(char)
+        index += 1
+    assert ''.join(result) == path
+    assert command[index:] == "'; & 'python.exe' '-m' 'easy_email_mcp.server'"
