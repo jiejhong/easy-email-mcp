@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from starlette.testclient import TestClient
 from easy_email_mcp.web_config import create_app
+from easy_email_mcp.config import Config, keyring_service
 
 
 def setup(tmp_path):
@@ -55,7 +56,7 @@ def test_safe_keyring_password_never_in_config(tmp_path):
     with patch("keyring.get_keyring", return_value=backend), patch("keyring.set_password") as save:
         result = client.post("/api/config", json={"username":"user@example.com","password":"FAKE_TEST_ONLY"}, headers=headers)
     assert result.status_code == 200
-    save.assert_called_once_with("easy-email-mcp", "user@example.com", "FAKE_TEST_ONLY")
+    save.assert_called_once_with(keyring_service(Config(username="user@example.com")), "user@example.com", "FAKE_TEST_ONLY")
     assert "FAKE_TEST_ONLY" not in path.read_text() + result.text + client.get("/api/config").text
 
 

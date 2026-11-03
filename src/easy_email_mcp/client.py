@@ -9,7 +9,7 @@ from mcp.client.stdio import StdioServerParameters
 
 
 async def invoke(tool, arguments, mode="auto"):
-    # Pass only operational variables and explicitly selected JJ_MAIL settings.
+    # Pass only operational variables and explicitly selected EASY_EMAIL settings.
     allowed = {"PATH", "HOME", "USERPROFILE", "SYSTEMROOT", "LOCALAPPDATA", "APPDATA", "LANG", "TMP", "TEMP", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"}
     secret_name = os.getenv("EASY_EMAIL_SECRET_ENV", "EASY_EMAIL_PASSWORD")
     env = {k: v for k, v in os.environ.items() if k in allowed or k.startswith("EASY_EMAIL_") or k == secret_name}

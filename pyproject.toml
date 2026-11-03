@@ -3,7 +3,7 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "easy-email-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local-first, read-only-by-default IMAP/SMTP MCP server"
 requires-python = ">=3.11"
 dependencies = ["mcp==2.3.0", "keyring>=25,<26", "starlette>=0.48,<2", "uvicorn>=0.31,<1"]

@@ -21,18 +21,18 @@
   },
   {
     "path": "README.md",
-    "sha256": "0e21c5fbe4d2aa009d936b1f04e650c23e413a4cf0461262e6bd19f397ff960a",
-    "bytes": 9770
+    "sha256": "e4443ca3e21ad8ab983b59adaa03b88ba6e26089eccb83fa5733d1ba3cb29bdd",
+    "bytes": 14128
   },
   {
     "path": "SECURITY.md",
-    "sha256": "a57ed67dff20587ff18ab5e9b003e7903224b5c6f90daedcec4fd7f962ff66a5",
-    "bytes": 3188
+    "sha256": "d371f7bf19a77ff4a2d5dba174d398af8878a1c7e484ffea239f12b127d74aa0",
+    "bytes": 5994
   },
   {
     "path": "docs/ACCEPTANCE.md",
-    "sha256": "3932fd8a2d6e7dd52abf6ea0a33e94019fe5b87956aeb74f6ccad19894059470",
-    "bytes": 2696
+    "sha256": "28f59783fc44cf077cfc83b46d7c706e868a54d69656e8894ef0243b757676c8",
+    "bytes": 3235
   },
   {
     "path": "examples/config.example.json",
@@ -46,23 +46,23 @@
   },
   {
     "path": "pyproject.toml",
-    "sha256": "c61660bbdec4ac4abc0103f0aac669509867f75a0261142b6fface82b489f2ae",
+    "sha256": "1da167c5aa214cedb7510a9e108a0402c078a8537f75a64147733c63a5d17859",
     "bytes": 643
   },
   {
     "path": "src/easy_email_mcp/__init__.py",
-    "sha256": "b313058666bfe49ae8dd652045a9e9527c1c4536121b942b16bdd6085c8f047b",
+    "sha256": "e127122b12717acc8e29840e960a7fe44c578b837b0dcdbe99ba2dd090b45ddb",
     "bytes": 91
   },
   {
     "path": "src/easy_email_mcp/client.py",
-    "sha256": "fad7e81b1fac35ee243b78c7abe17fe0377f74abdbf6d697e0b4cc22af5b1568",
-    "bytes": 2160
+    "sha256": "4fbf0fb646d5a9db315d940a56e21ef10c2e38e9b85af406d5b81c40ea3eb076",
+    "bytes": 2163
   },
   {
     "path": "src/easy_email_mcp/config.py",
-    "sha256": "2b04bbfe48320ba091cb924bedd3bd418ecca61724fd566604f7c440b3c9ec25",
-    "bytes": 5492
+    "sha256": "3addcdac4cefe38a6783bb9185c17529cb014a4ed58d7ce3db35533e07360ee4",
+    "bytes": 6251
   },
   {
     "path": "src/easy_email_mcp/mail.py",
@@ -70,19 +70,34 @@
     "bytes": 12258
   },
   {
+    "path": "src/easy_email_mcp/runtime.py",
+    "sha256": "03684bca0b54860fd8ae595ff7304b18bab0a165e6d0a6398283d10622edde59",
+    "bytes": 6146
+  },
+  {
     "path": "src/easy_email_mcp/server.py",
-    "sha256": "ded3dba6d61f8ef5a6c416d243ad5a5afeb117ef7d76718aba49330a3267d417",
-    "bytes": 2910
+    "sha256": "9c93f29bcdb485914856b2ded83b8b193b0e1678953a7576cf27eec0c5ac5730",
+    "bytes": 3604
   },
   {
     "path": "src/easy_email_mcp/web_config.py",
-    "sha256": "195da2e9b9b95e9202e36ab96dfb95a4b473aa7671046c9381c6f658e82dc705",
-    "bytes": 17856
+    "sha256": "a05216e47f445c6f8bbf38a65e11b6bc78d3b139a4c705e8483bc1491e248959",
+    "bytes": 19117
   },
   {
     "path": "tests/js/web_password_interaction.cjs",
     "sha256": "e4904dc20274cc9277ffa5e4981bd8481e8d4e2d75e43d8fbbf9a26c2cdd2d87",
     "bytes": 4654
+  },
+  {
+    "path": "tests/test_credential_scope.py",
+    "sha256": "85b9e63b493afab2d1100a0867638ffcb2adf16505eb7778712a474ee6c78d4f",
+    "bytes": 3919
+  },
+  {
+    "path": "tests/test_hot_reload.py",
+    "sha256": "d3822f9723374723b88ee196d01c6f28bdfbae303726e90c38acfa8607bdddfc",
+    "bytes": 13525
   },
   {
     "path": "tests/test_mail.py",
@@ -91,8 +106,8 @@
   },
   {
     "path": "tests/test_mcp.py",
-    "sha256": "90fff65ec14d585d2923fe3441aab99d48d1308236c631eefc9936b467bc3c50",
-    "bytes": 4074
+    "sha256": "e6fa694a4dd9a252aeb9e791c2de686048c9c885926c3caecee60defe7ea26f2",
+    "bytes": 4207
   },
   {
     "path": "tests/test_save_diagnostics.py",
@@ -101,8 +116,8 @@
   },
   {
     "path": "tests/test_web_config.py",
-    "sha256": "3ffc364121e40f51906aeefe82ff9dfa60699b7ec102d0b78560148b5644ae04",
-    "bytes": 7879
+    "sha256": "60ebbcd93e1938d53b3675a492f9fe83dbd7d626ccce5773b9edcc8a32afde8e",
+    "bytes": 7973
   },
   {
     "path": "tests/test_web_javascript.py",

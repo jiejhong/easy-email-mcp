@@ -3,6 +3,7 @@ import os
 import json
 from pathlib import Path
 import ssl
+import hashlib
 
 
 class MailError(Exception):
@@ -27,9 +28,10 @@ class Config:
     state_dir: str = ""
 
     @classmethod
-    def from_env(cls):
+    def from_env(cls, environ=None):
+        env = os.environ if environ is None else environ
         values = {}
-        config_path = os.getenv("EASY_EMAIL_CONFIG")
+        config_path = env.get("EASY_EMAIL_CONFIG")
         if config_path:
             try:
                 with Path(config_path).open("rb") as handle:
@@ -53,8 +55,8 @@ class Config:
         }
         for suffix, field in mapping.items():
             name = "EASY_EMAIL_" + suffix
-            if name in os.environ:
-                value = os.environ[name]
+            if name in env:
+                value = env[name]
                 if field in {"imap_port", "smtp_port"}:
                     try:
                         value = int(value)
@@ -110,12 +112,22 @@ class Config:
             if not name.startswith(("keyring.backends.SecretService", "keyring.backends.macOS", "keyring.backends.Windows")):
                 raise MailError("No approved OS credential backend; no plaintext fallback")
             try:
-                value = keyring.get_password("easy-email-mcp", self.username)
+                value = keyring.get_password(keyring_service(self), self.username)
             except Exception:
                 raise MailError("OS credential store unavailable") from None
         if not value:
+            if self.secret_source == "keyring":
+                raise MailError("Endpoint-bound credential missing. Save the password once in the 0.2.0 configuration page under this OS user. Legacy credentials are not automatically migrated or used.")
             raise MailError("Mailbox secret is not available; use an approved secure credential channel")
         return value
+
+
+def keyring_service(config):
+    """Scope credentials to account and both TLS endpoints; never hash a secret."""
+    identity = ["credential-scope-v2", config.username, config.imap_host.lower(), config.imap_port,
+                config.smtp_host.lower(), config.smtp_port, config.smtp_security]
+    digest = hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
+    return "easy-email-mcp/v2/" + digest
 
 
 def tls_context():

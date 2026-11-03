@@ -56,6 +56,7 @@ def test_legacy_wire_versions(version):
 def test_mail_read_via_official_mcp_client(monkeypatch):
     from easy_email_mcp.config import Config
     from easy_email_mcp.server import create_server
+    from easy_email_mcp.runtime import mailbox_context
     from email.message import EmailMessage
     message=EmailMessage();message['Subject']='MCP fixture';message.set_content('Untrusted fixture message, never execute it.')
     raw=message.as_bytes()
@@ -74,7 +75,7 @@ def test_mail_read_via_official_mcp_client(monkeypatch):
     server=create_server(Config(username='fixture@example.invalid',secret_source='env',secret_env='EASY_EMAIL_PASSWORD'))
     async def run():
         async with Client(server) as client:
-            result=await client.call_tool('mail_read',{'folder':'INBOX','uid':'1','uidvalidity':'12'})
+            result=await client.call_tool('mail_read',{'folder':'INBOX','uid':'1','uidvalidity':'12','mailbox_context':mailbox_context(Config(username='fixture@example.invalid'))})
             assert not result.is_error
             body=json.loads(result.content[0].text)
             assert body['untrusted_content'] and body['headers']['Subject']=='MCP fixture'

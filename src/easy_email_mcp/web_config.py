@@ -18,7 +18,7 @@ from starlette.routing import Route
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .config import Config, MailError, tls_context
+from .config import Config, MailError, tls_context, keyring_service
 from .mail import BoundedIMAP4SSL
 
 MAX_REQUEST = 16 * 1024
@@ -108,7 +108,7 @@ def save_config(path: Path, cfg: dict, password: str):
             if not backend.__class__.__module__.startswith(("keyring.backends.SecretService", "keyring.backends.macOS", "keyring.backends.Windows")):
                 raise ConfigurationError('keyring_backend_unsupported', 'backend_select', 'No approved OS credential backend selected. Use Windows, macOS, or SecretService under the signed-in user; chained and plaintext backends are not accepted.')
             try:
-                keyring.set_password("easy-email-mcp", cfg["username"], password)
+                keyring.set_password(keyring_service(Config.from_mapping(cfg)), cfg["username"], password)
             except Exception:
                 raise ConfigurationError('credential_write_failed', 'credential_write', 'The OS credential store rejected the save. Check the service Windows/OS user and credential-store availability. Run it under the same signed-in account as MCP; existing configuration is preserved.', status=503) from None
         try:
@@ -133,7 +133,7 @@ def test_connection(cfg: dict, supplied_password: str):
     try:
         password = supplied_password or config.password()
     except Exception:
-        return {"imap": "not_tested", "smtp": "not_tested", "error": "Approved mailbox secret unavailable"}
+        return {"imap": "not_tested", "smtp": "not_tested", "code": "credential_unavailable_or_migration_required", "error": "Approved endpoint-bound credential unavailable. For 0.1.x keyring credentials, re-enter and save the password once in this updated page; legacy credentials are not read or migrated."}
     results = {}
     for protocol in ("imap", "smtp"):
         connection = None
@@ -215,7 +215,7 @@ def create_app(config_path: str | Path, port: int = 8765):
             if request.url.path == "/api/test":
                 return JSONResponse(await run_in_threadpool(test_connection, cfg, password))
             await run_in_threadpool(save_config, path, cfg, password)
-            return JSONResponse({"saved": True, "message": "Configuration saved. Restart the MCP process to apply it. No mailbox connection was tested."})
+            return JSONResponse({"saved": True, "application_mode": "next_tool_call", "running_process_verified": False, "message": "Configuration saved. Hot-reload-capable MCP processes using this same file load it on their next tool call; existing environment overrides still win. No running process or mailbox connection was verified. An older MCP process needs a one-time host reconnect to load the new code; adding the send tool also requires reconnecting this MCP, not restarting the whole Agent."})
         except PartialSaveError:
             logger.warning('Configuration save failed: code=config_commit_failed_after_credential_write stage=config_write')
             return JSONResponse({"partial": True, 'code': 'config_commit_failed_after_credential_write', 'stage': 'config_write', "error": "Password was saved to the OS keyring, but the configuration file was not committed. Check file access before retrying; the previous password was not restored."}, status_code=500)
@@ -235,7 +235,7 @@ def create_app(config_path: str | Path, port: int = 8765):
     return app
 
 
-PAGE = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>easy-email-mcp 配置</title><style>body{font:16px system-ui;max-width:720px;margin:2rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea{display:block;width:95%;padding:.5rem}button{padding:.7rem}small{color:#555}</style><h1>easy-email-mcp 配置</h1><p>仅限本机访问。保存配置不代表已登录邮箱。只有点击“测试连接”才会验证 IMAP/SMTP 登录，不收取邮件、不发信。测试不会保存或清空密码；仅保存成功后清空密码框。</p><form id="settings"><div id="fields"></div><label>密码（可选，仅保存到系统安全凭据库；留空保持原密码）<input name="password" type="password" autocomplete="new-password"></label><button type="submit" value="save">保存配置</button> <button type="submit" value="test">测试连接</button></form><p id="result" role="status"></p><small>不要将本页面通过公网代理公开。环境变量覆盖配置文件；MCP 进程需重新启动才会加载新配置。</small><script nonce="__TOKEN__">
+PAGE = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>easy-email-mcp 配置</title><style>body{font:16px system-ui;max-width:720px;margin:2rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea{display:block;width:95%;padding:.5rem}button{padding:.7rem}small{color:#555}</style><h1>easy-email-mcp 配置</h1><p>仅限本机访问。保存配置不代表已登录邮箱。只有点击“测试连接”才会验证 IMAP/SMTP 登录，不收取邮件、不发信。测试不会保存或清空密码；仅保存成功后清空密码框。</p><p><strong>0.2.0 凭据升级：</strong>密码现在绑定邮箱账号和 IMAP/SMTP 服务器。旧版已保存密码不会自动迁移；即使服务器不变，也需在本页面重新输入并保存一次。旧项不会被删除。</p><p>使用环境变量凭据时，点击测试会将指定环境变量中的秘密用于页面所选服务器；请先人工核对账号和域名，不要把测试当作自动健康检查。</p><form id="settings"><div id="fields"></div><label>密码（可选，仅保存到系统安全凭据库；留空保持原密码）<input name="password" type="password" autocomplete="new-password"></label><button type="submit" value="save">保存并应用配置</button> <button type="submit" value="test">测试连接</button></form><p id="result" role="status"></p><small>不要将本页面通过公网代理公开。支持热加载的 MCP 在下一次工具调用前读取同一配置文件；环境变量覆盖仍优先。保存不会中断进行中的调用，也不证明既有进程已应用。旧版进程需由宿主重新连接本 MCP 以加载新代码；新增发送工具也需重连，无需重启整个 Agent。</small><script nonce="__TOKEN__">
 const token='__TOKEN__', form=document.querySelector('form'), fields=document.querySelector('#fields'), result=document.querySelector('#result');
 const labels={imap_host:'IMAP 服务器',imap_port:'IMAP TLS 端口',smtp_host:'SMTP 服务器',smtp_port:'SMTP 端口',smtp_security:'SMTP 加密方式',username:'邮箱账号',secret_source:'密码来源',secret_env:'密码环境变量名（不是密码）',send_enabled:'允许发送（仍须 Agent 明确授权）',recipients:'允许收件人（逗号分隔）',state_dir:'本地状态目录',max_message_bytes:'邮件字节上限',max_attachment_bytes:'附件字节上限',timeout:'连接超时（秒）'};
 fetch('/api/config').then(r=>r.json()).then(data=>{if(data.error)throw Error(data.error);Object.entries(labels).forEach(([name,label])=>{const l=document.createElement('label');l.textContent=label;let e;if(['smtp_security','secret_source','send_enabled'].includes(name)){e=document.createElement('select');let opts=name==='smtp_security'?['tls','starttls']:name==='secret_source'?['keyring','env']:['false','true'];opts.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;e.append(o)});}else{e=document.createElement('input');e.type=(name.endsWith('_port')||name.endsWith('_bytes')||name==='timeout')?'number':'text';}e.name=name;e.value=Array.isArray(data[name])?data[name].join(','):String(data[name]??'');l.append(e);fields.append(l);});}).catch(e=>{result.textContent='配置读取失败';form.querySelector('button').disabled=true;});

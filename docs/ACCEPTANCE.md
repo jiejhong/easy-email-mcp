@@ -3,6 +3,8 @@
 ## 已执行（当前 Linux 云工作区，Python 3.12.14）
 
 - 官方 MCP SDK 2.3.0 安装、包 editable 安装、`pip check`。
+- 0.2.0 凭据回归：端点绑定scope不含密码，无旧keyring回退/自动迁移；mock验证新端点保存不会影响旧快照的凭据，env身份热变拒绝。真实用户需在新版界面重保存一次，不由测试代替。
+- 0.2.0 热加载回归：Web原子保存→同一MCP会话下一调用采用新配置、环境覆盖、无效配置安全失败后恢复、启动发送能力上限、发送关闭、并发旧/新快照隔离、跨账号UID上下文及过时发送revision拒绝；不读取真实秘密或发信。
 - 官方 Client → 实际 subprocess stdio Server → `mail_status`/工具枚举。
 - 2026-07-28 auto/explicit 客户端调用。
 - 2025-03-26、2025-06-18、2025-11-25 原始 stdio `initialize` → `notifications/initialized` → 工具调用；测试逐步等待响应，不依赖管道提前EOF。
