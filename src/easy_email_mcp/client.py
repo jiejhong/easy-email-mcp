@@ -6,6 +6,7 @@ import os
 import sys
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
+from .attachments import MAX_SEND_ARGUMENT_BYTES
 
 
 async def invoke(tool, arguments, mode="auto"):
@@ -19,19 +20,25 @@ async def invoke(tool, arguments, mode="auto"):
         return {"protocol_version": client.protocol_version, "result": result.model_dump(mode="json", by_alias=True)}
 
 
+def read_arguments(stream):
+    """Bound binary stdin before JSON decoding; large approved attachments fit."""
+    payload = stream.read(MAX_SEND_ARGUMENT_BYTES + 1)
+    if len(payload) > MAX_SEND_ARGUMENT_BYTES:
+        raise ValueError("Arguments too large")
+    data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("Arguments must be an object")
+    return data
+
+
 def main():
     parser = argparse.ArgumentParser(description="Call the mail MCP from a cloud/local Agent; JSON arguments on stdin")
     parser.add_argument("tool", nargs="?", default="mail_status")
     parser.add_argument("--mode", choices=["auto", "legacy", "2026-07-28"], default="auto")
-    parser.add_argument("--stdin", action="store_true", help="Read a JSON arguments object (max 1 MiB) from stdin")
+    parser.add_argument("--stdin", action="store_true", help="Read a JSON arguments object (max 48 MiB, including base64 attachments) from stdin")
     args = parser.parse_args()
     try:
-        payload = sys.stdin.read(1024 * 1024 + 1) if args.stdin else "{}"
-        if len(payload) > 1024 * 1024:
-            raise ValueError("Arguments too large")
-        data = json.loads(payload)
-        if not isinstance(data, dict):
-            raise ValueError("Arguments must be an object")
+        data = read_arguments(sys.stdin.buffer) if args.stdin else {}
         result = asyncio.run(invoke(args.tool, data, args.mode))
         print(json.dumps(result, ensure_ascii=False))
     except Exception:

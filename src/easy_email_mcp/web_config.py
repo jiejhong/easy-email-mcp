@@ -63,7 +63,7 @@ def validate(data):
     if cfg['secret_source'] not in ('keyring', 'env'):
         invalid('secret_source', 'Select keyring or env.')
     if type(cfg["send_enabled"]) is not bool:
-        invalid('send_enabled', 'Select true or false.')
+        invalid('send_enabled', 'Select 默认关闭 (false) or 默认打开 (true).')
     if not isinstance(cfg["recipients"], (list, tuple)) or len(cfg["recipients"]) > 100:
         invalid('recipients', 'Use a list of at most 100 recipient addresses.')
     if any(not isinstance(x, str) or len(x) > 320 or any(ord(c) < 32 for c in x) for x in cfg["recipients"]):
@@ -296,22 +296,55 @@ def create_app(config_path: str | Path, port: int = 8765):
     return app
 
 
-PAGE = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>easy-email-mcp 配置</title><style>body{font:16px system-ui;max-width:720px;margin:2rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea{display:block;width:95%;padding:.5rem}button{padding:.7rem}small{color:#555}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f6;padding:1rem;border-radius:.4rem}code{overflow-wrap:anywhere}section{margin:1.5rem 0;padding:1rem;border:1px solid #ddd;border-radius:.5rem}</style><h1>easy-email-mcp 配置</h1>__CONNECTION_PANEL__<p>仅限本机访问。保存配置不代表已登录邮箱。只有点击“测试连接”才会验证 IMAP/SMTP 登录，不收取邮件、不发信。测试不会保存或清空密码；仅保存成功后清空密码框。</p><p><strong>0.2.0 凭据升级：</strong>密码现在绑定邮箱账号和 IMAP/SMTP 服务器。旧版已保存密码不会自动迁移；即使服务器不变，也需在本页面重新输入并保存一次。旧项不会被删除。</p><p>使用环境变量凭据时，点击测试会将指定环境变量中的秘密用于页面所选服务器；请先人工核对账号和域名，不要把测试当作自动健康检查。</p><form id="settings"><div id="fields"></div><label>密码（可选，仅保存到系统安全凭据库；留空保持原密码）<input name="password" type="password" autocomplete="new-password"></label><button type="submit" value="save">保存并应用配置</button> <button type="submit" value="test">测试连接</button></form><p id="result" role="status"></p><small>不要将本页面通过公网代理公开。支持热加载的 MCP 在下一次工具调用前读取同一配置文件；环境变量覆盖仍优先。保存不会中断进行中的调用，也不证明既有进程已应用。旧版进程需由宿主重新连接本 MCP 以加载新代码；新增发送工具也需重连，无需重启整个 Agent。</small><script nonce="__TOKEN__">
+PAGE = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>easy-email-mcp 配置</title><style>body{font:16px system-ui;max-width:720px;margin:2rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea{display:block;width:95%;padding:.5rem}button{padding:.7rem}small{color:#555}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f6;padding:1rem;border-radius:.4rem}code{overflow-wrap:anywhere}.send-default{padding:1rem;border:2px solid #4669a2;border-radius:.5rem;background:#f5f8ff}.send-default small{display:block;margin-top:.6rem}section{margin:1.5rem 0;padding:1rem;border:1px solid #ddd;border-radius:.5rem}</style><h1>easy-email-mcp 配置</h1>__CONNECTION_PANEL__<p>仅限本机访问。保存配置不代表已登录邮箱。只有点击“测试连接”才会验证 IMAP/SMTP 登录，不收取邮件、不发信。测试不会保存或清空密码；仅保存成功后清空密码框。</p><p><strong>0.2.0 凭据升级：</strong>密码现在绑定邮箱账号和 IMAP/SMTP 服务器。旧版已保存密码不会自动迁移；即使服务器不变，也需在本页面重新输入并保存一次。旧项不会被删除。</p><p>使用环境变量凭据时，点击测试会将指定环境变量中的秘密用于页面所选服务器；请先人工核对账号和域名，不要把测试当作自动健康检查。</p><form id="settings"><div id="fields"></div><label>密码（可选，仅保存到系统安全凭据库；留空保持原密码）<input name="password" type="password" autocomplete="new-password"></label><button type="submit" value="save">保存并应用配置</button> <button type="submit" value="test">测试连接</button></form><p id="result" role="status"></p><small>不要将本页面通过公网代理公开。支持热加载的 MCP 在下一次工具调用前读取同一配置文件；环境变量覆盖仍优先。保存不会中断进行中的调用，也不证明既有进程已应用。旧版进程需由宿主重新连接本 MCP 以加载新代码；新增发送工具也需重连，无需重启整个 Agent。</small><script nonce="__TOKEN__">
 const token='__TOKEN__', form=document.querySelector('form'), fields=document.querySelector('#fields'), result=document.querySelector('#result');
-const labels={imap_host:'IMAP 服务器',imap_port:'IMAP TLS 端口',smtp_host:'SMTP 服务器',smtp_port:'SMTP 端口',smtp_security:'SMTP 加密方式',username:'邮箱账号',secret_source:'密码来源',secret_env:'密码环境变量名（不是密码）',send_enabled:'允许发送（仍须 Agent 明确授权）',recipients:'允许收件人（逗号分隔）',state_dir:'本地状态目录',max_message_bytes:'邮件字节上限',max_attachment_bytes:'附件字节上限',timeout:'连接超时（秒）'};
-fetch('/api/config').then(r=>r.json()).then(data=>{if(data.error)throw Error(data.error);Object.entries(labels).forEach(([name,label])=>{const l=document.createElement('label');l.textContent=label;let e;if(['smtp_security','secret_source','send_enabled'].includes(name)){e=document.createElement('select');let opts=name==='smtp_security'?['tls','starttls']:name==='secret_source'?['keyring','env']:['false','true'];opts.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;e.append(o)});}else{e=document.createElement('input');e.type=(name.endsWith('_port')||name.endsWith('_bytes')||name==='timeout')?'number':'text';}e.name=name;e.value=Array.isArray(data[name])?data[name].join(','):String(data[name]??'');l.append(e);fields.append(l);});}).catch(e=>{result.textContent='配置读取失败';form.querySelector('button').disabled=true;});
+const labels={send_enabled:'发送权限默认状态',imap_host:'IMAP 服务器',imap_port:'IMAP TLS 端口',smtp_host:'SMTP 服务器',smtp_port:'SMTP 端口',smtp_security:'SMTP 加密方式',username:'邮箱账号',secret_source:'密码来源',secret_env:'密码环境变量名（不是密码）',recipients:'允许收件人（逗号分隔）',state_dir:'本地状态目录',max_message_bytes:'邮件字节上限',max_attachment_bytes:'附件字节上限',timeout:'连接超时（秒）'};
+let loaded=false, busy=false;
+const buttons=form.querySelectorAll('button');
+const setButtonsDisabled=disabled=>buttons.forEach(button=>{button.disabled=disabled;});
+setButtonsDisabled(true);
+result.textContent='正在读取配置…';
+fetch('/api/config').then(async r=>{
+  if(!r.ok)throw Error('load failed');
+  return r.json();
+}).then(data=>{
+  if(data.error || typeof data.send_enabled!=='boolean')throw Error('invalid configuration');
+  Object.entries(labels).forEach(([name,label])=>{
+    const l=document.createElement('label');l.textContent=label;
+    let e;
+    if(['smtp_security','secret_source','send_enabled'].includes(name)){
+      e=document.createElement('select');
+      const opts=name==='smtp_security'?['tls','starttls']:name==='secret_source'?['keyring','env']:['false','true'];
+      opts.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=name==='send_enabled'?(v==='true'?'默认打开':'默认关闭（推荐）'):v;e.append(o);});
+    }else{
+      e=document.createElement('input');e.type=(name.endsWith('_port')||name.endsWith('_bytes')||name==='timeout')?'number':'text';
+    }
+    e.name=name;e.value=Array.isArray(data[name])?data[name].join(','):String(data[name]??'');
+    l.append(e);
+    if(name==='send_enabled'){
+      l.className='send-default';
+      const help=document.createElement('small');help.id='send-default-help';
+      help.textContent='默认关闭：仅允许读取邮件。默认打开：启用发送能力，但每次发送仍须 Agent 明确授权，并受允许收件人列表限制。保存后，从只读模式启用发送需在宿主中重新连接本 MCP，无需重启整个 Agent。EASY_EMAIL_SEND_ENABLED 环境变量优先于此设置。';
+      e.setAttribute('aria-describedby',help.id);l.append(help);
+    }
+    fields.append(l);
+  });
+  loaded=true;setButtonsDisabled(false);result.textContent='';
+}).catch(()=>{result.textContent='配置读取失败，请刷新页面重试；未加载配置前不能保存或测试连接';setButtonsDisabled(true);});
 form.addEventListener('submit',async e=>{
   e.preventDefault();
+  if(!loaded || busy)return;
   const testing=e.submitter?.value==='test';
   const d=Object.fromEntries(new FormData(form));
   d.imap_port=Number(d.imap_port);d.smtp_port=Number(d.smtp_port);
   d.max_message_bytes=Number(d.max_message_bytes);d.max_attachment_bytes=Number(d.max_attachment_bytes);
   d.timeout=Number(d.timeout);d.send_enabled=d.send_enabled==='true';
   d.recipients=d.recipients.split(',').map(x=>x.trim()).filter(Boolean);
+  busy=true;setButtonsDisabled(true);
   try{
     const r=await fetch(testing?'/api/test':'/api/config',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':token},body:JSON.stringify(d)});
     const data=await r.json();
-    result.textContent=data.message||data.error||('IMAP: '+data.imap+'；SMTP: '+data.smtp+'（未保存配置）');
+    result.textContent=data.message||data.error||(testing?('IMAP: '+data.imap+'；SMTP: '+data.smtp+'（未保存配置）'):(r.ok && data.saved===true?'配置已保存；启用发送工具可能需要重新连接本 MCP':'保存未成功，请检查配置后重试'));
     // Testing is temporary authentication, not a save. Preserve input after any
     // failed/partial save, and never discard a newer edit made while awaiting IO.
     if(!testing && r.ok && data.saved===true && form.elements.password.value===d.password){
@@ -319,6 +352,8 @@ form.addEventListener('submit',async e=>{
     }
   }catch(e){
     result.textContent=testing?'测试失败，请检查本机配置服务；密码输入已保留':'保存失败，请检查本机配置服务；密码输入已保留';
+  }finally{
+    busy=false;setButtonsDisabled(false);
   }
 });
 </script></html>'''

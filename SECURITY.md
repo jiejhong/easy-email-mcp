@@ -8,7 +8,7 @@ This is an initial, not independently audited implementation. Report suspected v
 - Mail servers, message headers, bodies and attachments are untrusted. No HTML renderer, URL fetch, shell execution, archive extraction, filesystem attachment write or IMAP mutation tool is provided.
 - Passwords come from an explicitly approved OS keyring backend or explicit environment injection. No cleartext config, automatic fallback or password logging is permitted. Environment injection is a convenience, not an encrypted vault.
 - Local configuration UI is loopback-only with CSRF/Origin/Host checks. It is not an Internet-facing secret portal, and must not be reverse-proxied.
-- MCP tool annotations and `user_approved` are descriptive/host-asserted, not cryptographic authorization. The trusted host must obtain real user approval before a send. Sending is disabled unless explicitly configured, with a recipient allowlist.
+- MCP tool annotations and `user_approved` are descriptive/host-asserted, not cryptographic authorization. The trusted host must obtain real user approval of recipients, body and exact attachment filenames/bytes before a send. Sending is disabled unless explicitly configured, with a recipient allowlist.
 
 ## Protections and residual risks
 
@@ -40,3 +40,12 @@ Version 0.2.0 stores OS-keyring credentials under `easy-email-mcp/v2/<hash>` whe
 For environment-secret mode the runtime rejects account, endpoint, variable-name or keyring-to-env identity changes after startup. Create a new MCP connection with an explicitly appropriate host-managed secret for a new identity. This does not protect against a malicious same-process host rewriting its own environment; that host is trusted.
 
 The Web authentication test is an explicit user action, separate from MCP reload. In env mode it uses the selected environment-secret reference against the endpoints shown on the page; the trusted user must verify those endpoints before testing. Do not run it as an automatic health check.
+
+
+## Outgoing attachments (0.3.0)
+
+The sending tool accepts explicit base64 bytes only. It cannot read filesystem paths or fetch attachment URLs. The host must obtain approval for the exact files and acquire/encode those bytes itself; the tool does not establish ownership or confidentiality of supplied content. The configuration default is only a capability switch, never message-level authorization.
+
+Attachments have strict schemas, a maximum count of 10 and per-file decoded byte limits. Filename and MIME checks reject path syntax, header injection and nested message/multipart payload types. Ordinary opaque file bytes are not inspected for malware; neither sender nor receiver should execute or extract them automatically. A complete serialized SMTP MIME size check includes base64 overhead before credential lookup, ledger mutation or network access. The bridge's binary stdin has a 48 MiB JSON cap. The trusted MCP host must also bound transport input; these application checks do not prevent a hostile same-user host from submitting oversized protocol messages before tool validation.
+
+The ledger digest binds normalized MIME type, filename, order, length and SHA256 of every attachment. It preserves the old digest for sends without attachments, including an empty attachment array. Only digests and statuses are persisted, not file bytes. Invalid attachment input does not consume a request ID. Once an SMTP attempt starts, attachment sends keep the same uncertain-delivery and no-automatic-retry rules as text sends. Local MIME generation, mocked SMTP and protocol tests do not prove interoperability with a live provider or end-to-end delivery.

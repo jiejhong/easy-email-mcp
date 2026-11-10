@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 import threading
 
+from . import __version__
+from .attachments import MAX_ATTACHMENTS
 from .config import Config, MailError, keyring_service
 from .mail import MailService
 
@@ -105,7 +107,10 @@ class ConfigRuntime:
             "credential_scope": "endpoint_bound_v2" if snapshot.config.secret_source == "keyring" else "startup_identity_bound_env",
             "tls_required": True,
             "mailbox_connectivity_verified": False,
-            "version": "0.2.0",
+            "version": __version__,
+            "send_attachment_limits": {"max_count": MAX_ATTACHMENTS,
+                                       "max_file_bytes": snapshot.config.max_attachment_bytes,
+                                       "max_encoded_message_bytes": snapshot.config.max_message_bytes},
             "config_revision": snapshot.revision,
             "mailbox_identity": {"username": snapshot.config.username, "host": snapshot.config.imap_host, "port": snapshot.config.imap_port},
             "smtp_identity": {"username": snapshot.config.username, "host": snapshot.config.smtp_host, "port": snapshot.config.smtp_port, "security": snapshot.config.smtp_security},

@@ -2,7 +2,7 @@
 
 面向云端 Agent 和本地 Windows/macOS/Linux 的原创邮件 MCP 工具。IMAP 收取邮件，SMTP 发送邮件。默认只读、TLS 必须验证、邮件正文与附件始终视为不可信输入。
 
-> 当前状态：0.2.0 原型。已经在开发云环境通过真实 stdio MCP 客户端/服务端调用，以及 mock 邮件协议对象测试。**尚未登录腾讯企业邮箱或进行真实收发**。2026-11-02 的云端连接尝试停在 DNS 解析阶段；源码安装成功不代表网络、邮箱授权或宿主工具注册已完成。Windows/macOS 配置和 CI 已准备，但没有声称这些平台已实机验收。
+> 当前状态：0.3.0 原型。已经在开发云环境通过真实 stdio MCP 客户端/服务端调用，以及 mock 邮件协议对象测试。**尚未登录腾讯企业邮箱或进行真实收发**。2026-11-02 的云端连接尝试停在 DNS 解析阶段；源码安装成功不代表网络、邮箱授权或宿主工具注册已完成。Windows/macOS 配置和 CI 已准备，但没有声称这些平台已实机验收。
 
 ## 核心路径
 
@@ -107,7 +107,7 @@ printf '%s' '{"folder":"INBOX","limit":10}' | .venv/bin/python -m easy_email_mcp
 | `mail_search` | 按 UID 分页查询，可筛选未读，每次最多扫描 1,000 个 UID 区间 |
 | `mail_read` | 通过 UID+UIDVALIDITY 读取正文和附件元数据，EXAMINE + BODY.PEEK，不标记已读 |
 | `mail_attachment` | 返回受限附件 base64 和 SHA256，不落盘、不执行 |
-| `mail_send` | 仅显式开启时注册，发送纯文本邮件；不提供删除/移动工具 |
+| `mail_send` | 仅显式开启时注册，发送纯文本邮件及显式提供的 base64 附件；不提供删除/移动工具 |
 
 调用 `mail_search` 后保存 UIDVALIDITY 和 mailbox_context，读取/附件工具必须传入这两个引用，避免邮箱重建或切换账号后旧 UID 指向其他邮件。UID 分页以 `next_uid` 继续；达到 `uidnext` 即停止。搜索首版不支持任意 IMAP 查询表达式。
 
@@ -120,13 +120,49 @@ printf '%s' '{"folder":"INBOX","limit":10}' | .venv/bin/python -m easy_email_mcp
 - `send_enabled: true`
 - `recipients`: 明确允许的收件人地址列表
 - `state_dir`: 私有、可写且**持久化**目录，用于去重账本
-- 每次调用前读取 `mail_status` 的 `config_revision`，由宿主先取得用户对当前账号、收件人、正文及发送动作的明确批准，再传相同 `config_revision` 和 `user_approved=true`。当前有效配置与所提供revision不一致会拒绝发送，须重新检查配置及批准。
+- 每次调用前读取 `mail_status` 的 `config_revision`，由宿主先取得用户对当前账号、收件人、正文、附件文件名及实际字节和发送动作的明确批准，再传相同 `config_revision` 和 `user_approved=true`。当前有效配置与所提供revision不一致会拒绝发送，须重新检查配置及批准。
 
 **`user_approved` 是宿主的声明，`config_revision` 只用于检测配置变更，两者都不是人类认证机制。** revision是配置内容散列，不是单调递增的撤销令牌；A→B→A恢复相同配置时会恢复同一revision，不能以此证明没有历史变更或沿用已撤回的批准。 如果恶意/失控 Agent 可以任意设置参数，该布尔值无法保护用户。应在可信 Agent 层实施确认流程；不要仅依赖工具描述或 MCP annotations。配置文件/环境变量和宿主进程都处于信任边界内。
 
 每次发信使用唯一 `request_id`，服务先持久化 `uncertain`，然后才连接 SMTP。成功只表示 `accepted_by_smtp`，不证明送达。相同 ID 不会重发；超时/断线时不自动重试，必须先人工或授权流程核实实际发出状态。不要通过换 ID 绕过去重。SMTP不提供跨服务端 exactly-once 保证。账本只存请求 ID、邮件内容散列和状态，不存正文、密码或完整收件人。
 
-不支持上传任意本地路径作为发信附件，避免 Agent 越权读取主机文件。首版只发送纯文本，后续可添加严格授权的附件入口。
+### 发送权限默认状态（0.3.0）
+
+配置页顶部的“发送权限默认状态”可选择“默认关闭（推荐）”或“默认打开”，保存到现有 `send_enabled` 字段。全新配置以及未指定该字段的旧配置仍默认关闭。选择默认打开后，后续启动的 MCP 会注册 `mail_send`；已经以只读状态启动的会话需要由宿主重新连接本 MCP。关闭后，热加载会阻止后续发送。`EASY_EMAIL_SEND_ENABLED` 的启动环境覆盖仍优先于页面设置，可通过 `mail_status.environment_override_fields` 核对。
+
+**默认打开只开启发送能力，不等于批准发送邮件。** 收件人白名单、持久化去重目录、当前 `config_revision` 和宿主逐次批准仍然必须满足。保存配置和测试连接都不会发送邮件。
+
+### 发送附件（0.3.0）
+
+`mail_send` 新增可选的 `attachments` 数组。省略、`null` 或空数组继续发送纯文本邮件，兼容旧调用。每项包含：
+
+- `filename`：1–120 个字符的安全文件名，支持中文；不接受路径、URL、控制字符或 Windows 保留名。危险名称直接拒绝，不静默更名。
+- `base64`：用户批准的确切文件字节，使用标准带填充的 base64，不含空白或 data URL 前缀。允许空文件。
+- `content_type`：可选，默认 `application/octet-stream`；仅接受 MIME `type/subtype`，不带参数。嵌套 `message/*` 和 `multipart/*` 不支持，`.eml` 等文件可作为 `application/octet-stream` 原样附件发送。
+
+参数示例（仅说明格式；先由宿主核对并取得真实批准，不能把示例中的 `user_approved` 当成授权）：
+
+```json
+{
+  "to": ["reader@example.invalid"],
+  "subject": "附件示例",
+  "body": "请查收附件。",
+  "request_id": "new_unique_request_001",
+  "config_revision": "从当前 mail_status 获取",
+  "user_approved": true,
+  "attachments": [
+    {"filename": "说明.txt", "content_type": "text/plain", "base64": "aGVsbG8K"}
+  ]
+}
+```
+
+宿主只应在用户批准后读取并编码指定文件，通过原生 MCP 或 `easy-email-call mail_send --stdin` 提交 JSON。MCP 服务**不接受本地路径、不下载 URL、不解压或执行附件**；附件内容不会被当作指令。Web 页是配置界面，不是邮件撰写或附件上传入口。
+
+每封最多 10 个附件；单附件受 `max_attachment_bytes` 限制（默认 2 MiB，配置硬上限 4 MiB）。完整发信 MIME，包括正文、邮件头、边界和 base64 膨胀，受 `max_message_bytes` 限制（默认 8 MiB，配置硬上限 32 MiB）。`mail_status.send_attachment_limits` 返回当前限额。桥接 CLI 的 stdin JSON 上限为 48 MiB，以容纳 base64；这不会提高服务器的邮件/附件上限。超限或无效附件在读取凭据、写去重账本、连接 SMTP 前拒绝。
+
+返回结果包含附件的文件名、类型、字节数和 SHA256，不回传附件内容。去重散列包含附件顺序、文件名、类型和实际字节摘要；相同 `request_id` 改变附件会被拒绝，完全相同的重试只返回原状态、不重发。旧纯文本账本仍兼容。不确定发送不得换 ID 自动重试。SMTP 接受也不代表收件人已经收到附件。
+
+升级到 0.3.0 后，宿主需重新连接本 MCP 一次以加载新代码和工具参数。现有配置文件及 0.2.0 的端点绑定凭据无需迁移；仍使用 0.1.x 的用户须遵守上文凭据迁移步骤。
 
 ## MCP 2025 / 2026 兼容
 
