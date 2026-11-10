@@ -184,7 +184,7 @@ def test_attachment_sending_still_requires_all_protections(enabled, smtp):
 
 def test_official_mcp_client_schema_validation_and_large_attachment(enabled, smtp):
     async def run():
-        async with Client(create_server(enabled)) as client:
+        async with Client(create_server(enabled), read_timeout_seconds=30) as client:
             tool = next(tool for tool in (await client.list_tools()).tools if tool.name == "mail_send")
             schema = tool.model_dump(mode="json", by_alias=True)["inputSchema"]
             assert "attachments" in schema["properties"]
@@ -204,7 +204,7 @@ def test_official_mcp_client_schema_validation_and_large_attachment(enabled, smt
             assert data["status"] == "accepted_by_smtp"
             assert data["attachments"][0]["bytes"] == 1024 * 1024 + 1
             assert len(smtp[0]) == 1
-    asyncio.run(run())
+    asyncio.run(asyncio.wait_for(run(), timeout=90))
 
 
 def test_cli_binary_input_supports_large_attachment_and_has_finite_cap(monkeypatch):
@@ -243,6 +243,7 @@ import easy_email_mcp.mail as mail
 def forbidden(*args, **kwargs):
     raise AssertionError("Real network access forbidden")
 socket.create_connection = forbidden
+socket.getfqdn = forbidden
 Config.password = lambda self: "synthetic-only"
 class FakeSMTP:
     def __init__(self, *args, **kwargs):
@@ -271,7 +272,7 @@ create_server(config).run()
         marker = tmp_path / "smtp-calls.txt"
         params = StdioServerParameters(command=sys.executable,
                     args=["-c", script, str(tmp_path / "ledger"), str(marker)], env=env)
-        async with Client(params, mode=mode) as client:
+        async with Client(params, mode=mode, read_timeout_seconds=30) as client:
             assert client.protocol_version == version
             status = json.loads((await client.call_tool("mail_status", {})).content[0].text)
             raw = b"x" * (1024 * 1024 + 1)
@@ -289,4 +290,12 @@ create_server(config).run()
             assert not again.is_error
             assert json.loads(again.content[0].text)["retried"] is False
         assert marker.read_text().splitlines() == [hashlib.sha256(raw).hexdigest()]
-    asyncio.run(run())
+    asyncio.run(asyncio.wait_for(run(), timeout=90))
+
+
+def test_message_id_uses_sender_domain_without_hostname_dns(enabled, smtp):
+    with patch("socket.getfqdn", side_effect=AssertionError("hostname DNS forbidden")):
+        assert send(enabled, [attachment()])["status"] == "accepted_by_smtp"
+        assert send(enabled, [attachment()])["retried"] is False
+    assert len(smtp[0]) == 1
+    assert str(smtp[0][0]["Message-ID"]).endswith("@example.invalid>")

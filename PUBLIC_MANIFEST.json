@@ -6,8 +6,8 @@
   },
   {
     "path": ".github/workflows/tests.yml",
-    "sha256": "506389ac6793ceeaf670b6b996b0160a4297e493ced5d1c728c6b82c42b027ff",
-    "bytes": 565
+    "sha256": "778063320916b7f5ab7ae093f2620118e0710041818ad17959100ac916e20db5",
+    "bytes": 589
   },
   {
     "path": ".gitignore",
@@ -36,8 +36,8 @@
   },
   {
     "path": "docs/ACCEPTANCE.md",
-    "sha256": "728e93252450a0b4afcc7204adeeab77be7d040cb2c5eda790a359ce7217a69b",
-    "bytes": 4468
+    "sha256": "123f0f3f2ec8e1dc9fc525bfede2f21baca2dff052d09ca41fe15ec555bea5f1",
+    "bytes": 4646
   },
   {
     "path": "examples/config.example.json",
@@ -76,8 +76,8 @@
   },
   {
     "path": "src/easy_email_mcp/mail.py",
-    "sha256": "5cce203c6c83b46de289c1e80e810873d361de54df7e74fd1f3697aa6d270b93",
-    "bytes": 13296
+    "sha256": "e458c8466aca146e0e93ce031d2aff67a75d012ed4418552ec00a9428c5678ab",
+    "bytes": 13412
   },
   {
     "path": "src/easy_email_mcp/runtime.py",
@@ -126,8 +126,8 @@
   },
   {
     "path": "tests/test_send_attachments.py",
-    "sha256": "783e92570c7b14a0481e5665216767780e420d314fd8cd267db99b0909fd1025",
-    "bytes": 14930
+    "sha256": "82a333a4dcbc4226468c5519dc724e96d00a4061cf2496bf1e7addfc05e859b6",
+    "bytes": 15475
   },
   {
     "path": "tests/test_web_config.py",

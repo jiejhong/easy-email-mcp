@@ -191,7 +191,8 @@ class MailService:
         try:
             msg = EmailMessage(policy=policy.SMTP)
             msg["From"], msg["To"], msg["Subject"] = c.username, ", ".join(to), subject
-            msg["Date"], msg["Message-ID"] = formatdate(localtime=False), make_msgid()
+            # Avoid local-hostname DNS during MIME preparation or dedup checks.
+            msg["Date"], msg["Message-ID"] = formatdate(localtime=False), make_msgid(domain=c.username.rsplit("@", 1)[-1])
             msg.set_content(body)
             for item in prepared:
                 maintype, subtype = item.content_type.split("/", 1)
