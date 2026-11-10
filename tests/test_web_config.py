@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import pytest
 from pathlib import Path, PurePosixPath
 from unittest.mock import patch
 
@@ -240,3 +241,36 @@ def test_windows_mixed_single_quotes_round_trip_as_one_literal():
         index += 1
     assert ''.join(result) == path
     assert command[index:] == "'; & 'python.exe' '-m' 'easy_email_mcp.server'"
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_send_default_round_trips_without_network(tmp_path, enabled):
+    client, path, headers = setup(tmp_path)
+    with patch("socket.create_connection", side_effect=AssertionError("network forbidden")):
+        response = client.post("/api/config", json={"username": "user@example.com", "send_enabled": enabled}, headers=headers)
+        assert response.status_code == 200
+        assert json.loads(path.read_text())["send_enabled"] is enabled
+        assert client.get("/api/config").json()["send_enabled"] is enabled
+        assert Config.from_env({"EASY_EMAIL_CONFIG": str(path)}).send_enabled is enabled
+        # An explicit process environment override still takes priority.
+        assert Config.from_env({"EASY_EMAIL_CONFIG": str(path), "EASY_EMAIL_SEND_ENABLED": str(not enabled).lower()}).send_enabled is not enabled
+    assert response.json()["running_process_verified"] is False
+    assert "reconnect" in response.json()["message"]
+
+
+def test_new_and_legacy_configs_default_to_send_disabled(tmp_path):
+    client, path, _ = setup(tmp_path)
+    assert client.get("/api/config").json()["send_enabled"] is False
+    path.write_text('{"username":"user@example.com"}')
+    assert client.get("/api/config").json()["send_enabled"] is False
+
+
+@pytest.mark.parametrize("invalid_value", ["true", "false", "", 0, 1, None, [], {}])
+def test_invalid_send_default_preserves_saved_configuration(tmp_path, invalid_value):
+    client, path, headers = setup(tmp_path)
+    original = '{"username":"user@example.com","send_enabled":false}'
+    path.write_text(original)
+    response = client.post("/api/config", json={"username": "user@example.com", "send_enabled": invalid_value}, headers=headers)
+    assert response.status_code == 400
+    assert response.json()["field"] == "send_enabled"
+    assert path.read_text() == original

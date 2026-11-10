@@ -238,7 +238,7 @@ def test_real_stdio_process_reloads_same_session(source):
         params = StdioServerParameters(command=sys.executable, args=['-m', 'easy_email_mcp.server'], env=dict(os.environ))
         async with Client(params) as client:
             first = result_body(await client.call_tool('mail_status', {}))
-            assert first['version'] == '0.2.0'
+            assert first['version'] == '0.3.0'
             atomic_config(source, username='new@example.invalid', send_enabled=True)
             second = result_body(await client.call_tool('mail_status', {}))
             assert second['config_revision'] != first['config_revision']

@@ -21,4 +21,4 @@ def test_actual_web_password_javascript():
         [node, str(driver)], input=json.dumps({'script': script}),
         text=True, capture_output=True, timeout=20, check=True,
     )
-    assert json.loads(completed.stdout)['passed'] == 15
+    assert json.loads(completed.stdout)['passed'] == 28

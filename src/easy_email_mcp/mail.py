@@ -15,6 +15,7 @@ import smtplib
 import sqlite3
 import threading
 from .config import Config, MailError, tls_context
+from .attachments import prepare_attachments, safe_filename
 
 
 class BoundedIMAP4SSL(imaplib.IMAP4_SSL):
@@ -36,14 +37,6 @@ class BoundedIMAP4SSL(imaplib.IMAP4_SSL):
         if self.byte_budget < 0:
             raise MailError("IMAP response exceeds byte budget")
         return line
-
-
-def safe_filename(name):
-    name = (name or "attachment.bin").replace("\\", "/").split("/")[-1]
-    name = re.sub(r"[\x00-\x1f\x7f<>:\"|?*]", "_", name).strip(" .")
-    if re.fullmatch(r"(?i)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", name):
-        name = "_" + name
-    return (name or "attachment.bin")[:120]
 
 
 def mailbox_name(name):
@@ -176,7 +169,7 @@ class MailService:
             raise MailError("Attachment exceeds byte limit")
         return {"untrusted_content": True, "filename": safe_filename(part.get_filename()), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "base64": base64.b64encode(data).decode("ascii")}
 
-    def send(self, to, subject, body, request_id, user_approved=False):
+    def send(self, to, subject, body, request_id, user_approved=False, attachments=None):
         c = self.config
         if not c.send_enabled or not user_approved:
             raise MailError("Sending disabled or explicit host approval missing")
@@ -193,8 +186,33 @@ class MailService:
             raise MailError("Recipient not in configured allowlist")
         if any(x in subject for x in "\r\n\x00"):
             raise MailError("Invalid subject")
+        prepared = prepare_attachments(attachments, c)
+        attachment_metadata = [item.metadata() for item in prepared]
+        try:
+            msg = EmailMessage(policy=policy.SMTP)
+            msg["From"], msg["To"], msg["Subject"] = c.username, ", ".join(to), subject
+            # Avoid local-hostname DNS during MIME preparation or dedup checks.
+            msg["Date"], msg["Message-ID"] = formatdate(localtime=False), make_msgid(domain=c.username.rsplit("@", 1)[-1])
+            msg.set_content(body)
+            for item in prepared:
+                maintype, subtype = item.content_type.split("/", 1)
+                msg.add_attachment(item.data, maintype=maintype, subtype=subtype, filename=item.filename)
+            # Include headers, MIME boundaries and base64 expansion, matching
+            # smtplib's CRLF/SMTPUTF8 serialization before touching the ledger.
+            international = any(not addr.isascii() for addr in [c.username, *to])
+            wire = msg.as_bytes(policy=policy.SMTP.clone(utf8=international))
+        except (ValueError, TypeError, UnicodeError):
+            raise MailError("Cannot encode email content or attachment metadata") from None
+        if len(wire) > c.max_message_bytes:
+            raise MailError("Encoded email including attachments exceeds configured message byte limit")
+        del wire
         password = c.password()
-        digest = hashlib.sha256(json.dumps([c.username, to, subject, body], ensure_ascii=False).encode()).hexdigest()
+        # Preserve the pre-attachment digest for existing plain-text ledger rows.
+        content = [c.username, to, subject, body]
+        if prepared:
+            content.append(attachment_metadata)
+        digest = hashlib.sha256(json.dumps(content, ensure_ascii=False).encode()).hexdigest()
+        details = {"attachments": attachment_metadata} if prepared else {}
         path = Path(c.state_dir).expanduser()
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         dbpath = path / "send-ledger.sqlite3"
@@ -204,13 +222,9 @@ class MailService:
             if prior:
                 if prior[0] != digest:
                     raise MailError("request_id already used for different content")
-                return {"status": prior[1], "retried": False, "request_id": request_id}
+                return {"status": prior[1], "retried": False, "request_id": request_id, **details}
             db.execute("INSERT INTO sends VALUES (?,?,?)", (request_id, digest, "uncertain"))
             db.commit()  # Commit BEFORE network: crash must never trigger an automatic resend.
-            msg = EmailMessage()
-            msg["From"], msg["To"], msg["Subject"] = c.username, ", ".join(to), subject
-            msg["Date"], msg["Message-ID"] = formatdate(localtime=False), make_msgid()
-            msg.set_content(body)
             conn = None
             try:
                 if c.smtp_security == "tls":
@@ -225,9 +239,9 @@ class MailService:
                 status = "partially_accepted" if refused else "accepted_by_smtp"
                 db.execute("UPDATE sends SET status=? WHERE id=?", (status, request_id))
                 db.commit()
-                return {"status": status, "request_id": request_id, "message_id": str(msg["Message-ID"]), "delivery_confirmed": False}
+                return {"status": status, "request_id": request_id, "message_id": str(msg["Message-ID"]), "delivery_confirmed": False, **details}
             except Exception:
-                return {"status": "uncertain", "request_id": request_id, "retry_safe": False, "message": "Do not resend automatically; verify sent status through the account first"}
+                return {"status": "uncertain", "request_id": request_id, "retry_safe": False, **details, "message": "Do not resend automatically; verify sent status through the account first"}
             finally:
                 if conn:
                     try:
